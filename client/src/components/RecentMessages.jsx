@@ -1,18 +1,52 @@
-import React, { useEffect, useState } from 'react'
-import { dummyRecentMessagesData } from '../assets/assets'
+import React, { useEffect, useState, useCallback } from 'react'
 import { Link } from 'react-router-dom'
 import moment from 'moment'
+import { useAuth, useUser } from '@clerk/clerk-react'
+import api from '../api/axios'
+import toast from 'react-hot-toast'
 
 const RecentMessages = () => {
     const [messages, setMessages] = useState([])
+    const {user} = useUser()
+    const {getToken} = useAuth()
 
-    const fetchRecentMessages = async () => {
-        setMessages(dummyRecentMessagesData)
-    }
+    const fetchRecentMessages = useCallback(async () => {
+        try {
+            const token = await getToken()
+            const {data} = await api.get('/api/message/recent', {
+                headers: {Authorization: `Bearer ${token}`}
+            })
+            if (data.success) {
+                // Group messages by sender and get the latest messages for each sender
+                const groupedMessages = data.messages.reduce((acc, message)=>{
+                    const senderId = message.from_user_id._id;
+                    if (!acc[senderId] || new Date(message.createdAt) > new Date(acc[senderId].createdAt)) {
+                        acc[senderId] = message
+                    }
+                    return acc;
+                }, {})
+
+                // Sort messages by date
+                const sortedMessages = Object.values(groupedMessages).sort((a, b) => 
+                    new Date(b.createdAt) - new Date(a.createdAt)
+                )
+
+                setMessages(sortedMessages)
+            } else {
+                toast.error(data.message)
+            }
+        } catch (error) {
+            toast.error(error.message) 
+        }
+    }, [getToken])
 
     useEffect(() => {
-        fetchRecentMessages()
-    }, [])
+        if (user) {
+            fetchRecentMessages() // Initial fetch
+            const interval = setInterval(fetchRecentMessages, 30000) // Fetch every 30 seconds
+            return () => clearInterval(interval) // Cleanup
+        }
+    }, [user, getToken, fetchRecentMessages])
 
     return (
         <div className='bg-white max-w-xs mt-4 p-4 min-h-20 rounded-md shadow text-xs text-slate-800'>

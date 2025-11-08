@@ -7,7 +7,7 @@ import { inngest } from '../inngest/index.js';
 // Add User Story
 export const addUserStory = async (req, res) => {
     try {
-        const { userId } = req.auth; // ✅ or req.user depending on your auth middleware
+        const { userId } = await req.auth(); // call the auth helper to get the current userId
         const { content, media_type, background_color } = req.body;
         const media = req.file;
         let media_url = '';
@@ -47,15 +47,24 @@ export const addUserStory = async (req, res) => {
 // Get User Stories
 export const getStories = async (req, res) => {
     try {
-        const { userId } = req.auth;
+        const { userId } = await req.auth();
         const user = await User.findById(userId);
 
         // Include user's own stories + connections + following
         const userIds = [userId, ...user.connections, ...user.following];
 
-        const stories = await Story.find({
-            user: { $in: userIds }, // ✅ Fixed query syntax
+        let stories = await Story.find({
+            user: { $in: userIds },
         }).populate('user').sort({ createdAt: -1 });
+
+        // Normalize field name for backward compatibility (some docs used media_urls)
+        stories = stories.map(s => {
+            const obj = s.toObject ? s.toObject() : s;
+            if (!obj.media_url && obj.media_urls) {
+                obj.media_url = obj.media_urls;
+            }
+            return obj;
+        });
 
         res.json({ success: true, stories });
     } catch (error) {

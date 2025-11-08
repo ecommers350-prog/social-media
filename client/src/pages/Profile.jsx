@@ -1,34 +1,58 @@
-import React, { useEffect, useState } from 'react'
-import { useParams } from 'react-router-dom'
-import { dummyPostsData, dummyUserData } from '../assets/assets'
-import Loading from '../components/Loading'
-import UserProfileInfo from '../components/UserProfileInfo'
-import PostCard from '../components/PostCard'
-import { Link } from 'lucide-react'
-import moment from 'moment'
-import ProfileModal from '../components/ProfileModal'
+import React, { useEffect, useState } from 'react';
+import { useParams } from 'react-router-dom';
+import Loading from '../components/Loading';
+import UserProfileInfo from '../components/UserProfileInfo';
+import PostCard from '../components/PostCard';
+import moment from 'moment';
+import ProfileModal from '../components/ProfileModal';
+import { useAuth } from '@clerk/clerk-react';
+import toast from 'react-hot-toast';
+import { useSelector } from 'react-redux';
+import api from '../api/axios';
 
 const Profile = () => {
-  const { ProfileId } = useParams()
-  const [user, setUser] = useState(null)
-  const [posts, setPosts] = useState([])
-  const [activeTab, setActiveTab] = useState('posts') // 'posts' | 'about'
-  const [showEdit, setShowEdit] = useState(false)
-  const [editForm, setEditForm] = useState({ name: '', bio: '' })
+  const currentUser = useSelector((state) => state.user.value);
+  const { getToken } = useAuth();
+  const { ProfileId } = useParams();
 
-  const fetchUser = async (id) => {
-    setUser(dummyUserData)
-    setPosts(dummyPostsData)
-    setEditForm({ name: dummyUserData.name || '', bio: dummyUserData.bio || '' })
-  }
+  const [user, setUser] = useState(null);
+  const [posts, setPosts] = useState([]); // always an array
+  const [activeTab, setActiveTab] = useState('posts');
+  const [showEdit, setShowEdit] = useState(false);
+
+  const fetchUser = async (profileId) => {
+    try {
+      const token = await getToken?.();
+      if (!token) {
+        toast.error('Please log in to view profiles');
+        return;
+      }
+
+      const { data } = await api.post(
+        '/api/user/profiles',
+        { profileId },
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+
+      if (data.success) {
+        setUser(data.profile || data.Profile || null);
+        setPosts(data.posts || data.post || []); // ✅ fallback ensures array
+      } else {
+        toast.error(data.message || 'Failed to fetch profile');
+      }
+    } catch (error) {
+      console.error(error);
+      toast.error('Error fetching profile');
+    }
+  };
 
   useEffect(() => {
-    fetchUser(ProfileId)
-  }, [ProfileId])
+    if (currentUser) {
+      fetchUser(ProfileId || currentUser._id);
+    }
+  }, [ProfileId, currentUser]);
 
-
-
-  if (!user) return <Loading />
+  if (!user) return <Loading />;
 
   return (
     <div className="relative h-full overflow-y-auto bg-gray-100 p-8">

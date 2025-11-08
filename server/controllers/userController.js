@@ -186,8 +186,8 @@ export const sendConnectionRequest = async (req, res) => {
         // Check if users are already connected
         const connection = await Connection.findOne({
             $or: [
-                {rom_user_id: userId, to_user_id: id},
-                {rom_user_id: id, to_user_id: userId},
+                {from_user_id: userId, to_user_id: id},
+                {from_user_id: id, to_user_id: userId},
             ]
         })
 
@@ -202,12 +202,12 @@ export const sendConnectionRequest = async (req, res) => {
                 data: {connectionId: newConnection._id}
             })
 
-            return re.json({success: true, message: 'Connection request sent successfully'})
+            return res.json({success: true, message: 'Connection request sent successfully'})
         }else if(connection && connection.status === 'accepted'){
-            return re.json({success: false, message: 'You are already connected with this user'})
+            return res.json({success: false, message: 'You are already connected with this user'})
         }
 
-        return re.json({success: false, message: 'Connection request pending'})
+        return res.json({success: false, message: 'Connection request pending'})
 
     } catch (error) {
         console.log(error);

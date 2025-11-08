@@ -48,7 +48,7 @@ const StoryViewer = ({ viewStory, setViewStory }) => {
           <img
             src={viewStory.media_url}
             alt={viewStory.alt || "story image"}
-            className="max-w-full max-h-screen object-contain"
+            className="max-w-full max-h-[90vh] w-auto object-contain rounded-lg"
           />
         );
       case "video":
@@ -78,7 +78,7 @@ const StoryViewer = ({ viewStory, setViewStory }) => {
       style={{
         backgroundColor:
           viewStory.media_type === "text"
-            ? viewStory.background_Color || "#000000"
+            ? viewStory.background_color || "#000000"
             : "rgba(0,0,0,0.9)",
       }}
     >
