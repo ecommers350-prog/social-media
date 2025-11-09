@@ -1,17 +1,22 @@
-// backend/models/Reel.js (add the new fields)
-import mongoose from "mongoose";
+import mongoose from 'mongoose';
 
-const reelSchema = new mongoose.Schema(
+const commentSchema = new mongoose.Schema(
   {
-    user: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
-    video_url: { type: String, required: true },
-    caption: { type: String },
-    likes: [{ type: mongoose.Schema.Types.ObjectId, ref: "User" }],
-    shares_count: { type: Number, default: 0 },
-    comments_count: { type: Number, default: 0 },    // new
-    saved_by: [{ type: mongoose.Schema.Types.ObjectId, ref: "User" }], // new
+    userId: { type: String, required: true },
+    text: { type: String, required: true, maxlength: 500 },
   },
   { timestamps: true }
 );
 
-export default mongoose.model("Reel", reelSchema);
+const reelSchema = new mongoose.Schema(
+  {
+    userId: { type: String, required: true }, // integrate Clerk user id here
+    caption: { type: String, maxlength: 2000 },
+    videoUrl: { type: String, required: true },
+    likeCount: { type: Number, default: 0 },
+    comments: [commentSchema],
+  },
+  { timestamps: true }
+);
+
+export default mongoose.model('Reel', reelSchema);

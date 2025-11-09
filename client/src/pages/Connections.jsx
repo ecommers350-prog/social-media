@@ -77,7 +77,7 @@ const Connections = () => {
         {/* Counts */}
         <div className="mb-8 flex flex-row flex-wrap gap-6">
           {dataArray.map((item, index)=>(
-            <div key={index} className='flex flex-col items-center justify-center gap-1 border h-20 w-40 border-gray-200 bg-white shadow rounded-md'>
+            <div key={index} className='flex flex-col items-center justify-center gap-1 border h-20 w-25 border-gray-200 bg-white shadow rounded-md'>
               <b>{item.value.length}</b>
               <p className="text-slate-600">{item.label}</p>
             </div>
@@ -85,7 +85,7 @@ const Connections = () => {
         </div>
 
         {/* Tabs */}
-        <div className="inline-flex flex-wrap items-center border border-gray-200 rounded-md p-1 bg-white shadow-sm">
+        <div className="inline-flex flex-wrap items-center border border-gray-200 rounded-md p-1 bg-white shadow-sm gap-3 px-3 py-1">
           {
             dataArray.map((tab)=>(
               <button onClick={()=> setCurrectTab(tab.label)} key={tab.label} className={`flex items-center px-3 py-1 text-sm rounded-md transition-colors ${currectTab === tab.label ? 'bg-white font-medium text-black' : 'text-gray-500 hover:text-black'}`}>
