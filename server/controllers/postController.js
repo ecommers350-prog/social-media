@@ -88,3 +88,25 @@ export const likePost = async (req, res) => {
         res.json({success: false, message: error.message})
     }
 }
+
+// Delete Post
+export const deletePost = async (req, res) => {
+    try {
+        const { userId } = req.auth()
+        const postId = req.params.id || req.body.postId
+
+        if (!postId) return res.status(400).json({ success: false, message: 'Post id is required' })
+
+        const post = await Post.findById(postId)
+        if (!post) return res.status(404).json({ success: false, message: 'Post not found' })
+
+        // Only owner can delete
+        if (post.user !== userId) return res.status(403).json({ success: false, message: 'Not authorized to delete this post' })
+
+        await Post.findByIdAndDelete(postId)
+        return res.json({ success: true, message: 'Post deleted' })
+    } catch (error) {
+        console.log(error)
+        return res.status(500).json({ success: false, message: error.message })
+    }
+}

@@ -2,6 +2,58 @@ import fs from 'fs';
 import imagekit from '../configs/imageKit.js';
 import Message from '../models/Message.js';
 
+// Get user's message threads
+export const getMessageThreads = async (req, res) => {
+    try {
+        const userId = req.auth.id;
+
+        // Find all messages where the user is either sender or receiver
+        const messages = await Message.find({
+            $or: [
+                { from_user_id: userId },
+                { to_user_id: userId }
+            ]
+        })
+        .sort({ createdAt: -1 })
+        .populate('from_user_id', 'username avatar')
+        .populate('to_user_id', 'username avatar');
+
+        // Group messages by conversation
+        const threads = messages.reduce((acc, msg) => {
+            const otherUserId = msg.from_user_id._id.toString() === userId ? 
+                msg.to_user_id._id.toString() : 
+                msg.from_user_id._id.toString();
+            
+            const otherUser = msg.from_user_id._id.toString() === userId ? 
+                msg.to_user_id : 
+                msg.from_user_id;
+
+            if (!acc[otherUserId]) {
+                acc[otherUserId] = {
+                    id: otherUserId,
+                    name: otherUser.username,
+                    avatar: otherUser.avatar,
+                    lastText: msg.text,
+                    time: msg.createdAt,
+                    unread: !msg.seen && msg.to_user_id._id.toString() === userId
+                };
+            }
+            return acc;
+        }, {});
+
+        res.json({ 
+            success: true, 
+            threads: Object.values(threads)
+        });
+    } catch (error) {
+        console.error('Error getting message threads:', error);
+        res.status(500).json({ 
+            success: false, 
+            message: 'Error fetching message threads' 
+        });
+    }
+};
+
 // Create an empty object to store SS Event connections
 const connections = {};
 

@@ -15,7 +15,7 @@ const Sidebar = ({SidebarOpen, setSidebarOpen}) => {
       const {signOut} = useClerk()
 
   return (
-    <div className={`w-60 xl:w-72 bg-white border-r border-gray-200 flex flex-col justify-between items-center max-sm:absolute top-0 border-0 z-20
+    <div className={`w-60 xl:w-72 bg-white border-r border-gray-200 flex flex-col justify-between items-center max-sm:absolute bottom-0 border-0 z-20
     ${SidebarOpen ? 'translate-x-0' : 'max-sm:-translate-x-full'} transition-all duration-300 ease-in-out` }>
         <div className='w-full'>
               <img onClick={()=> navigate('/')} src={assets.logo} alt="" className='w-26 ml-7 my-2 cursor-pointer' />
@@ -38,7 +38,7 @@ const Sidebar = ({SidebarOpen, setSidebarOpen}) => {
             <div className='flex gap-2 items-center cursor-pointer'>
                 <UserButton />
                 <div>
-                  <h1 className='text-sm font-medium'>{user.full_name}</h1>    
+                  <h1 className='text-sm font-medium'>{user.full_name}</h1>  
                   <p className='text-xs text-gray-500'>@{user.username}</p>   
                 </div>        
             </div>
