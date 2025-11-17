@@ -1,28 +1,25 @@
 // src/components/StoryViewer.jsx
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { BadgeCheck, Heart, MessageSquareMore, SendHorizonal, X } from "lucide-react";
+import { BadgeCheck, Heart, MessageSquareMore, SendHorizonal, X, Eye } from "lucide-react";
 import { useAuth, useUser } from "@clerk/clerk-react";
 import api from "../api/axios";
 
 /**
  * Props:
- *  - viewStory: {
- *      _id: string,
- *      media_type: "image" | "video" | "text",
- *      media_url?: string,
- *      content?: string,             // for text stories
- *      background_color?: string,    // for text stories
- *      user: { _id?: string, id?: string, full_name?: string, profile_picture?: string } | string
- *      userId?: string, ownerId?: string
- *    } | null
+ *  - viewStory: { ... } | null
  *  - setViewStory: (val: null) => void
  *  - onPrev?: () => void
  *  - onNext?: () => void
- *  - currentUserId?: string          // (optional) pass your app's user id (Mongo _id or Clerk id)
+ *  - currentUserId?: string
  *
- * Notes:
- *  - Owner-only action bar is shown when current user id === story owner id (normalized).
+ * Changes in this file:
+ *  - Interaction bar is available to any viewer (not only owner).
+ *  - Fetches like-status, like list and comments for any viewer.
+ *  - Shows list of users who liked the story (with their id/avatar/name when available).
+ *  - Allows any logged-in user to toggle like and post comments.
+ *  - When posting a comment, the component attempts to also send a message to the story owner
+ *    via POST /api/messages { to: ownerId, text } — wrapped in try/catch so it won't break.
  */
 
 const DURATION_IMAGE_TEXT_MS = 10000; // 10s
@@ -43,14 +40,17 @@ const StoryViewer = ({ viewStory, setViewStory, onPrev, onNext, currentUserId })
   const { user } = useUser();
 
   // --- UI state ---
-  const [progress, setProgress] = useState(0); // image/text progress
+  const [progress, setProgress] = useState(0);
   const [videoProgress, setVideoProgress] = useState(0);
 
   const [liked, setLiked] = useState(false);
   const [likeCount, setLikeCount] = useState(0);
+  const [likesList, setLikesList] = useState([]); // array of { _id, full_name, avatar }
   const [comments, setComments] = useState([]);
   const [commentText, setCommentText] = useState("");
   const [sending, setSending] = useState(false);
+
+  const [showLikesDropdown, setShowLikesDropdown] = useState(false);
 
   const videoRef = useRef(null);
   const modalRef = useRef(null);
@@ -64,10 +64,9 @@ const StoryViewer = ({ viewStory, setViewStory, onPrev, onNext, currentUserId })
     [isText, viewStory?.background_color]
   );
 
-  // --- Robust owner check (handles many shapes) ---
   const currentIdRaw =
     (typeof currentUserId !== "undefined" && currentUserId) ||
-    user?.publicMetadata?.mongoId || // if you mirror Mongo _id into Clerk
+    user?.publicMetadata?.mongoId ||
     user?.id ||
     user?.unsafeMetadata?.mongoId;
 
@@ -78,7 +77,6 @@ const StoryViewer = ({ viewStory, setViewStory, onPrev, onNext, currentUserId })
     viewStory?.ownerId;
 
   const norm = (v) => (v == null ? "" : String(v));
-  const isOwner = !!norm(currentIdRaw) && !!norm(ownerIdRaw) && norm(currentIdRaw) === norm(ownerIdRaw);
 
   // --- Body scroll lock & focus ---
   useEffect(() => {
@@ -98,12 +96,11 @@ const StoryViewer = ({ viewStory, setViewStory, onPrev, onNext, currentUserId })
     if (e.key === "ArrowLeft" && onPrev) onPrev();
   };
 
-  // --- Backdrop click to close ---
   const onBackdrop = (e) => {
     if (e.target === e.currentTarget) setViewStory(null);
   };
 
-  // --- Swipe-down to close (touch) ---
+  // swipe-down omitted for brevity (same as before) - keep existing implementation
   useEffect(() => {
     if (!isOpen) return;
     const el = modalRef.current;
@@ -163,7 +160,6 @@ const StoryViewer = ({ viewStory, setViewStory, onPrev, onNext, currentUserId })
     return () => clearInterval(timer);
   }, [isOpen, isVideo, setViewStory]);
 
-  // --- Video progress ---
   const onTimeUpdate = () => {
     const v = videoRef.current;
     if (!v || !isFinite(v.duration) || v.duration <= 0) {
@@ -174,53 +170,67 @@ const StoryViewer = ({ viewStory, setViewStory, onPrev, onNext, currentUserId })
     setVideoProgress(Math.max(0, Math.min(100, pct)));
   };
 
-  // --- Fetch owner-only interaction data (likes, comments) ---
+  // --- Fetch interaction data for ANY viewer ---
   useEffect(() => {
     const bootstrap = async () => {
-      if (!isOpen || !isOwner || !viewStory?._id) return;
+      if (!isOpen || !viewStory?._id) return;
       try {
         const token = await getToken();
-        const [likeRes, commentRes] = await Promise.all([
-          api.get(`/api/story/${viewStory._id}/like-status`, {
-            headers: { Authorization: `Bearer ${token}` },
-          }),
-          api.get(`/api/story/${viewStory._id}/comments`, {
-            headers: { Authorization: `Bearer ${token}` },
-          }),
+        const [likeRes, commentRes, likesListRes] = await Promise.all([
+          api.get(`/api/story/${viewStory._id}/like-status`, { headers: { Authorization: `Bearer ${token}` } }),
+          api.get(`/api/story/${viewStory._id}/comments`, { headers: { Authorization: `Bearer ${token}` } }),
+          // endpoint expected to return array of users who liked the story
+          api.get(`/api/story/${viewStory._id}/likes`, { headers: { Authorization: `Bearer ${token}` } }).catch(() => ({ data: { likes: [] } })),
         ]);
+
         setLiked(!!likeRes?.data?.liked);
         setLikeCount(Number(likeRes?.data?.count || 0));
         setComments(Array.isArray(commentRes?.data?.comments) ? commentRes.data.comments : []);
+        setLikesList(Array.isArray(likesListRes?.data?.likes) ? likesListRes.data.likes : []);
       } catch (e) {
         console.warn("Failed to load story interactions", e?.message);
       }
     };
     bootstrap();
-  }, [isOpen, isOwner, viewStory?._id, getToken]);
+  }, [isOpen, viewStory?._id, getToken]);
 
-  // --- Like toggle (owner-only) ---
+  // --- Like toggle (any logged-in viewer) ---
   const toggleLike = async () => {
-    if (!isOwner || !viewStory?._id) return;
+    if (!viewStory?._id) return;
     const optimistic = !liked;
     setLiked(optimistic);
     setLikeCount((c) => c + (optimistic ? 1 : -1));
+
+    // update local likesList optimistically
+    const me = { _id: norm(currentIdRaw) || user?.id, full_name: user?.fullName, avatar: user?.imageUrl };
+    setLikesList((arr) => {
+      if (optimistic) return [me, ...arr.filter((a) => norm(a._id) !== norm(me._id))];
+      return arr.filter((a) => norm(a._id) !== norm(me._id));
+    });
+
     try {
       const token = await getToken();
-      await api.post(
-        `/api/story/${viewStory._id}/like`,
-        { like: optimistic },
-        { headers: { Authorization: `Bearer ${token}` } }
-      );
+      await api.post(`/api/story/${viewStory._id}/like`, { like: optimistic }, { headers: { Authorization: `Bearer ${token}` } });
     } catch  {
       // rollback
       setLiked(!optimistic);
       setLikeCount((c) => c - (optimistic ? 1 : -1));
+      setLikesList((arr) => {
+        const meId = norm(currentIdRaw) || user?.id;
+        if (optimistic) {
+          // we tried to add but failed -> remove me
+          return arr.filter((a) => norm(a._id) !== meId);
+        } else {
+          // we tried to remove but failed -> add me back
+          return [{ _id: meId, full_name: user?.fullName, avatar: user?.imageUrl }, ...arr];
+        }
+      });
     }
   };
 
-  // --- Submit comment (owner-only) ---
+  // --- Submit comment (any viewer). Also attempts to send an owner message ---
   const submitComment = async () => {
-    if (!isOwner || !viewStory?._id) return;
+    if (!viewStory?._id) return;
     const text = commentText.trim();
     if (!text) return;
     setSending(true);
@@ -231,15 +241,33 @@ const StoryViewer = ({ viewStory, setViewStory, onPrev, onNext, currentUserId })
         { text },
         { headers: { Authorization: `Bearer ${token}` } }
       );
+
       const saved =
-        data?.comment || {
+        data?.comment ||
+        ({
           _id: Math.random().toString(36),
           text,
           createdAt: new Date().toISOString(),
           user: { _id: norm(currentIdRaw), full_name: user?.fullName, avatar: user?.imageUrl },
-        };
+        });
+
       setComments((arr) => [saved, ...arr]);
       setCommentText("");
+
+      // additionally, try to send a message to the story owner so they get notified in their messages
+      try {
+        const ownerId = norm(ownerIdRaw);
+        if (ownerId) {
+          await api.post(
+            `/api/messages`,
+            { to: ownerId, text: `Comment on your story: ${text}`, storyId: viewStory._id },
+            { headers: { Authorization: `Bearer ${token}` } }
+          );
+        }
+      } catch (error) {
+        // non-fatal: if messaging endpoint doesn't exist or fails, ignore
+        console.debug('Failed to send message to owner', error?.message);
+      }
     } catch (e) {
       console.warn("Failed to add comment", e?.message);
     } finally {
@@ -290,7 +318,7 @@ const StoryViewer = ({ viewStory, setViewStory, onPrev, onNext, currentUserId })
         <X className="w-7 h-7" />
       </button>
 
-      {/* Content container (stop propagation so backdrop click works) */}
+      {/* Content container */}
       <div
         ref={modalRef}
         tabIndex={-1}
@@ -328,17 +356,14 @@ const StoryViewer = ({ viewStory, setViewStory, onPrev, onNext, currentUserId })
         )}
       </div>
 
-      {/* Owner-only Interaction Bar */}
-      {isOwner && (
-        <div className="absolute bottom-4 left-1/2 -translate-x-1/2 w-[min(720px,90vw)]">
-          <div className="rounded-2xl bg-black/50 backdrop-blur p-3 sm:p-4 text-white shadow-xl">
-            {/* Like row */}
-            <div className="flex items-center justify-between gap-3">
+      {/* Interaction Bar (visible to any viewer) */}
+      <div className="absolute bottom-4 left-1/2 -translate-x-1/2 w-[min(720px,90vw)]">
+        <div className="rounded-2xl bg-black/50 backdrop-blur p-3 sm:p-4 text-white shadow-xl">
+          <div className="flex items-center justify-between gap-3">
+            <div className="flex items-center gap-2">
               <button
                 onClick={toggleLike}
-                className={`flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-white/10 active:scale-95 transition ${
-                  liked ? "text-rose-400" : ""
-                }`}
+                className={`flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-white/10 active:scale-95 transition ${liked ? "text-rose-400" : ""}`}
                 aria-pressed={liked}
                 aria-label="Toggle like"
               >
@@ -346,54 +371,84 @@ const StoryViewer = ({ viewStory, setViewStory, onPrev, onNext, currentUserId })
                 <span className="text-sm">{likeCount}</span>
               </button>
 
-              <div className="flex items-center gap-2 text-sm opacity-90">
-                <MessageSquareMore className="w-5 h-5" />
-                <span>{comments.length}</span>
-              </div>
+              <button
+                onClick={() => setShowLikesDropdown((s) => !s)}
+                className="flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-white/10"
+                aria-expanded={showLikesDropdown}
+                aria-label="Show likes list"
+              >
+                <Eye className="w-5 h-5" />
+                <span className="text-sm">View</span>
+              </button>
             </div>
 
-            {/* Comments list */}
-            <div className="mt-3 max-h-40 overflow-y-auto space-y-2 pr-1">
-              {comments.length === 0 ? (
-                <p className="text-xs text-white/60">No comments yet.</p>
+            <div className="flex items-center gap-2 text-sm opacity-90">
+              <MessageSquareMore className="w-5 h-5" />
+              <span>{comments.length}</span>
+            </div>
+          </div>
+
+          {/* Likes dropdown */}
+          {showLikesDropdown && (
+            <div className="mt-3 bg-black/60 rounded p-2 max-h-40 overflow-y-auto">
+              {likesList.length === 0 ? (
+                <p className="text-xs text-white/60">No likes yet.</p>
               ) : (
-                comments.map((c) => (
-                  <div key={c._id} className="flex items-start gap-2 text-sm">
-                    {c.user?.avatar && (
-                      <img src={c.user.avatar} alt="avatar" className="w-6 h-6 rounded-full object-cover" />
-                    )}
-                    <div>
-                      <span className="font-medium">{c.user?.full_name || "User"}</span>
-                      <span className="ml-2 opacity-90">{c.text}</span>
+                likesList.map((l) => (
+                  <div key={l._id || l.id || Math.random()} className="flex items-center gap-2 text-sm py-1">
+                    {l.avatar && <img src={l.avatar} alt={l.full_name || 'user'} className="w-6 h-6 rounded-full object-cover" />}
+                    <div className="flex flex-col">
+                      <span className="font-medium">{l.full_name || 'User'}</span>
+                      <span className="text-xs text-white/60">id: {l._id || l.id || 'unknown'}</span>
                     </div>
                   </div>
                 ))
               )}
             </div>
+          )}
 
-            {/* Add comment */}
-            <div className="mt-3 flex items-center gap-2">
-              <input
-                value={commentText}
-                onChange={(e) => setCommentText(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") submitComment();
-                }}
-                placeholder="Add a comment…"
-                className="flex-1 bg-white/10 rounded-lg px-3 py-2 outline-none placeholder:text-white/60"
-              />
-              <button
-                onClick={submitComment}
-                disabled={sending || !commentText.trim()}
-                className="px-3 py-2 rounded-lg bg-white/10 hover:bg-white/20 disabled:opacity-60"
-                aria-label="Send comment"
-              >
-                <SendHorizonal className="w-5 h-5" />
-              </button>
-            </div>
+          {/* Comments list */}
+          <div className="mt-3 max-h-40 overflow-y-auto space-y-2 pr-1">
+            {comments.length === 0 ? (
+              <p className="text-xs text-white/60">No comments yet.</p>
+            ) : (
+              comments.map((c) => (
+                <div key={c._id} className="flex items-start gap-2 text-sm">
+                  {c.user?.avatar && <img src={c.user.avatar} alt="avatar" className="w-6 h-6 rounded-full object-cover" />}
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <span className="font-medium">{c.user?.full_name || 'User'}</span>
+                      <span className="ml-2 opacity-90">{c.text}</span>
+                    </div>
+                    <div className="text-xs text-white/60">{new Date(c.createdAt || Date.now()).toLocaleString()}</div>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+
+          {/* Add comment */}
+          <div className="mt-3 flex items-center gap-2">
+            <input
+              value={commentText}
+              onChange={(e) => setCommentText(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") submitComment();
+              }}
+              placeholder="Add a comment…"
+              className="flex-1 bg-white/10 rounded-lg px-3 py-2 outline-none placeholder:text-white/60"
+            />
+            <button
+              onClick={submitComment}
+              disabled={sending || !commentText.trim()}
+              className="px-3 py-2 rounded-lg bg-white/10 hover:bg-white/20 disabled:opacity-60"
+              aria-label="Send comment"
+            >
+              <SendHorizonal className="w-5 h-5" />
+            </button>
           </div>
         </div>
-      )}
+      </div>
     </div>,
     document.body
   );

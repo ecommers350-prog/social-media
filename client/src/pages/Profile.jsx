@@ -12,8 +12,10 @@ import toast from "react-hot-toast";
 import { useDispatch, useSelector } from "react-redux";
 import api from "../api/axios";
 import { fetchUser } from "../features/user/userSlice";
-// If you use connections slice, keep this; otherwise remove it:
 import { fetchConnections } from "../features/connections/connectionsSlice";
+
+// helper: avoid passing empty string to <img src="">
+const safeUrl = (u) => (typeof u === "string" && u.trim() !== "" ? u : null);
 
 // Detect Mongo ObjectId
 const isMongoId = (s) => typeof s === "string" && /^[a-f\d]{24}$/i.test(s);
@@ -21,24 +23,18 @@ const isMongoId = (s) => typeof s === "string" && /^[a-f\d]{24}$/i.test(s);
 // Resolve the id your backend understands
 const getFollowTargetId = (u) => {
   if (!u) return null;
-  if (isMongoId(u._id)) return u._id; // Mongo in _id
-  if (isMongoId(u.id)) return u.id;   // Sometimes 'id' is Mongo
+  if (isMongoId(u._id)) return u._id;
+  if (isMongoId(u.id)) return u.id;
   if (u.mongoId && isMongoId(u.mongoId)) return u.mongoId;
-
-  // Otherwise pass Clerk id fields (backend will resolve to Mongo)
   if (typeof u.clerkId === "string") return u.clerkId;
   if (typeof u.clerk_id === "string") return u.clerk_id;
-
-  // If your API already accepts Clerk in _id, allow it
   if (typeof u._id === "string") return u._id;
-
   return null;
 };
 
 // Extract only *user* IDs from common following shapes
 const extractFollowingUserIds = (u) => {
   if (!u) return [];
-  // Prefer explicit arrays if present
   const base =
     Array.isArray(u.following) ? u.following :
     Array.isArray(u.followingIds) ? u.followingIds :
@@ -53,14 +49,12 @@ const extractFollowingUserIds = (u) => {
       continue;
     }
     if (typeof item === "object") {
-      // common shapes
       if (item.userId) { ids.push(String(item.userId)); continue; }
       if (item._id) { ids.push(String(item._id)); continue; }
       if (item.id) { ids.push(String(item.id)); continue; }
       if (item.targetId) { ids.push(String(item.targetId)); continue; }
     }
   }
-  // De-duplicate
   return Array.from(new Set(ids));
 };
 
@@ -75,7 +69,6 @@ const Profile = () => {
   const [posts, setPosts] = useState([]);
   const [activeTab, setActiveTab] = useState("posts");
   const [showEdit, setShowEdit] = useState(false);
-  const [showCreatePost, setShowCreatePost] = useState(false);
 
   const [isFollowing, setIsFollowing] = useState(false);
   const [followLoading, setFollowLoading] = useState(false);
@@ -121,37 +114,51 @@ const Profile = () => {
 
   const fetchProfile = async (id) => {
     try {
-      const token = await getToken?.();
+      // Try to get a token if available
+      let token;
+      try {
+        token = await getToken?.();
+      } catch (error) {
+        toast.error(error.message)
+        token = null;
+      }
+
       if (!token) {
+        // If you want to require login for viewing profiles, keep this.
+        // Otherwise you could allow public view by calling endpoint without auth.
         toast.error("Please log in to view profiles");
         return;
       }
+
       const { data } = await api.post(
-        "/api/user/profiles",
+        "/api/user/profile",
         { profileId: id },
         { headers: { Authorization: `Bearer ${token}` } }
       );
+
       if (data.success) {
         const profile = data.profile || data.Profile || null;
         setUser(profile);
-        setPosts(data.posts || data.post || []);
+        setPosts(Array.isArray(data.posts) ? data.posts : (Array.isArray(data.post) ? data.post : []));
       } else {
         toast.error(data.message || "Failed to fetch profile");
       }
     } catch (error) {
-      console.error(error);
-      toast.error("Error fetching profile");
+      console.error("fetchProfile error:", error);
+      toast.error(error?.response?.data?.message || "Error fetching profile");
     }
   };
 
+  // Fetch profile when currentUser available or profileId changes
   useEffect(() => {
-    if (currentUser) {
-      fetchProfile(profileId || currentUser._id);
-    }
+    // If profileId present try fetch; if not, prefer currentUser
+    const idToFetch = profileId || currentUser?._id;
+    if (!idToFetch) return;
+    fetchProfile(idToFetch);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [profileId, currentUser]);
+  }, [profileId, currentUser?._id]);
 
-  // Derive "already following" from Redux (no follow-status endpoint needed)
+  // Derive "already following" from Redux/current user
   useEffect(() => {
     if (!user || !currentUser) return;
 
@@ -159,7 +166,7 @@ const Profile = () => {
     const myFollowing =
       currentUser.followingIds ||
       currentUser.following ||
-      []; // adjust to your store
+      [];
 
     const toStr = (v) => (v != null ? String(v) : "");
     const amIFollowing = myFollowing.some(
@@ -168,7 +175,7 @@ const Profile = () => {
         toStr(fid) === toStr(targetId)
     );
 
-    setIsFollowing(amIFollowing);
+    setIsFollowing(Boolean(amIFollowing));
   }, [user, currentUser]);
 
   if (!user) return <Loading />;
@@ -176,7 +183,6 @@ const Profile = () => {
   const isOwnProfile = !profileId || profileId === currentUser?._id;
 
   const goCreatePost = () => {
-    setShowCreatePost(true);
     navigate("/create-post");
   };
   const goConnections = () => navigate("/connections");
@@ -186,6 +192,10 @@ const Profile = () => {
     try {
       setFollowLoading(true);
       const token = await getToken();
+      if (!token) {
+        toast.error("Please log in");
+        return;
+      }
       const { data } = await api.post(
         "/api/user/follow",
         { id: userId, follow: true },
@@ -195,7 +205,6 @@ const Profile = () => {
         setIsFollowing(true);
         toast.success(data.message || "Followed");
         dispatch(fetchUser(token));
-        // If you track connections, keep:
         dispatch(fetchConnections(token));
       } else {
         toast.error(data.message || "Could not follow");
@@ -212,6 +221,10 @@ const Profile = () => {
     try {
       setFollowLoading(true);
       const tokenNow = await getToken();
+      if (!tokenNow) {
+        toast.error("Please log in");
+        return;
+      }
       const { data } = await api.post(
         "/api/user/unfollow",
         { id: userId },
@@ -223,10 +236,10 @@ const Profile = () => {
         dispatch(fetchConnections(tokenNow));
         dispatch(fetchUser(tokenNow));
       } else {
-        toast(data.message || "Unfollow failed");
+        toast.error(data.message || "Unfollow failed");
       }
     } catch (error) {
-      toast.error(error.message || "Unfollow failed");
+      toast.error(error?.response?.data?.message || error.message || "Unfollow failed");
     } finally {
       setFollowLoading(false);
     }
@@ -234,7 +247,7 @@ const Profile = () => {
 
   const targetId = getFollowTargetId(user);
 
-  // ✅ Compute *user-only* following count and override for the header component
+  // compute user-only following count for header
   const followingUsersCount = extractFollowingUserIds(user).length;
   const userForHeader = { ...user, followingCount: followingUsersCount };
 
@@ -243,9 +256,9 @@ const Profile = () => {
       <div className="max-w-4xl mx-auto">
         <div className="bg-white rounded-xl sm:rounded-2xl shadow-xl overflow-hidden relative">
           <div className="relative">
-            {user.cover_photo ? (
+            {safeUrl(user.cover_photo) ? (
               <img
-                src={user.cover_photo}
+                src={safeUrl(user.cover_photo)}
                 alt="cover"
                 className="w-full h-40 sm:h-48 md:h-56 object-cover"
               />
@@ -267,7 +280,7 @@ const Profile = () => {
                   </button>
                   <button
                     onClick={goCreatePost}
-                    className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-gradient-to-r from-indigo-500 to purple-600 text-white hover:from-indigo-600 hover:to-purple-700 shadow-md focus:outline-none focus:ring-2 focus:ring-indigo-300"
+                    className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-gradient-to-r from-indigo-500 to-purple-600 text-white hover:from-indigo-600 hover:to-purple-700 shadow-md focus:outline-none focus:ring-2 focus:ring-indigo-300"
                     aria-label="Create Post"
                   >
                     <PlusCircle className="w-5 h-5" />
@@ -350,7 +363,6 @@ const Profile = () => {
 
             {/* User Info */}
             <div className="relative">
-              {/* ⬇️ Pass the overridden followingCount */}
               <UserProfileInfo
                 user={userForHeader}
                 posts={posts}
@@ -424,7 +436,9 @@ const Profile = () => {
             {activeTab === "posts" && (
               <div className="mt-4 sm:mt-6 flex flex-col items-center gap-3 sm:gap-6">
                 {posts.length > 0 ? (
-                  posts.map((post) => <PostCard key={post._id} post={post} />)
+                  posts.map((post) => (
+                    <PostCard key={post._id ?? post.id} post={post} />
+                  ))
                 ) : (
                   <div className="text-gray-500 text-sm py-8 sm:py-10">No posts yet.</div>
                 )}
@@ -434,24 +448,28 @@ const Profile = () => {
             {activeTab === "media" && (
               <div className="mt-4 sm:mt-6 grid grid-cols-3 gap-2 sm:flex sm:flex-wrap sm:gap-4 sm:justify-center max-w-6xl mx-auto px-2">
                 {posts.flatMap((post) =>
-                  (post.image_urls || []).map((image, index) => (
-                    <a
-                      key={`${post._id}-${index}`}
-                      href={image}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="relative overflow-hidden rounded-lg w-full aspect-square sm:w-64 sm:h-40"
-                    >
-                      <img
-                        src={image}
-                        alt={`media-${index}`}
-                        className="w-full h-full object-cover"
-                      />
-                      <p className="hidden sm:block absolute bottom-0 right-0 text-xs p-1 px-3 backdrop-blur-xl text-white opacity-0 hover:opacity-100 transition duration-300">
-                        Posted {moment(post.createdAt).fromNow()}
-                      </p>
-                    </a>
-                  ))
+                  (Array.isArray(post.image_urls) ? post.image_urls : []).map((image, index) => {
+                    const url = safeUrl(image);
+                    if (!url) return null;
+                    return (
+                      <a
+                        key={`${post._id ?? post.id}-${index}`}
+                        href={url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="relative overflow-hidden rounded-lg w-full aspect-square sm:w-64 sm:h-40"
+                      >
+                        <img
+                          src={url}
+                          alt={`media-${index}`}
+                          className="w-full h-full object-cover"
+                        />
+                        <p className="hidden sm:block absolute bottom-0 right-0 text-xs p-1 px-3 backdrop-blur-xl text-white opacity-0 hover:opacity-100 transition duration-300">
+                          Posted {moment(post.createdAt ?? post.created_at).fromNow()}
+                        </p>
+                      </a>
+                    );
+                  })
                 )}
               </div>
             )}
@@ -467,7 +485,6 @@ const Profile = () => {
 
       {/* Modals */}
       {showEdit && <ProfileModal setShowEdit={setShowEdit} />}
-      {showCreatePost && <PostCard setShowCreate={setShowCreatePost} />}
     </div>
   );
 };
