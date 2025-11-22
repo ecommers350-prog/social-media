@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import Sidebar from "../components/Sidebar";
-import { Outlet } from "react-router-dom";
+import { Outlet, useLocation } from "react-router-dom";
 import { Menu, X } from "lucide-react";
 import Loading from "../components/Loading";
 import { useSelector } from "react-redux";
@@ -9,8 +9,14 @@ import Footer from "../components/Footer";
 const Layout = () => {
   const user = useSelector((state) => state.user.value);
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const location = useLocation();
 
   if (!user) return <Loading />;
+
+  // hide footer on messages page (adjust path if your route is different)
+  const hideFooter =
+    location.pathname.startsWith("/messages") ||
+    location.pathname.startsWith("/message");
 
   return (
     <div className="w-full flex min-h-screen">
@@ -37,17 +43,21 @@ const Layout = () => {
 
           {/* Sidebar panel */}
           <div className="absolute left-0 top-0 h-full w-72 bg-white shadow">
-            <Sidebar sidebarOpen={sidebarOpen} setSidebarOpen={setSidebarOpen} />
+            <Sidebar
+              sidebarOpen={sidebarOpen}
+              setSidebarOpen={setSidebarOpen}
+            />
           </div>
         </div>
       )}
 
       {/* Main content; reserve left margin on md+ to avoid being covered by fixed sidebar */}
-      <div className="flex-1 bg-slate-50 pb-16 md:ml-72">
+      <div className="flex-1 bg-slate-50 md:ml-72">
         <Outlet />
       </div>
 
-      <Footer /> {/* mobile-only footer (Footer component should use md:hidden so it's hidden on larger screens) */}
+      {/* mobile-only footer (Footer component should use md:hidden so it's hidden on larger screens) */}
+      {!hideFooter && <Footer />}
 
       {/* Mobile menu / close buttons (visible only on small screens) */}
       {sidebarOpen ? (
@@ -59,9 +69,7 @@ const Layout = () => {
         >
           <X className="w-5 h-5 text-gray-600" />
         </button>
-      ) : (
-        <button />
-      )}
+      ) : null}
     </div>
   );
 };

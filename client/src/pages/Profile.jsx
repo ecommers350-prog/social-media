@@ -374,22 +374,7 @@ const Profile = () => {
               {isOwnProfile ? (
                 <div className="md:hidden px-3 pb-3">
                   <div className="grid grid-cols-2 gap-2">
-                    <button
-                      onClick={goConnections}
-                      className="w-full flex items-center justify-center gap-2 rounded-lg bg-white text-slate-800 py-2 px-3 text-sm font-medium shadow focus:outline-none focus:ring-2 focus:ring-indigo-300"
-                      aria-label="Connections"
-                    >
-                      <Users className="w-4 h-4" />
-                      Connections
-                    </button>
-                    <button
-                      onClick={goCreatePost}
-                      className="w-full flex items-center justify-center gap-2 rounded-lg bg-gradient-to-r from-indigo-500 to-purple-600 text-white py-2 px-3 text-sm font-medium shadow-md focus:outline-none focus:ring-2 focus:ring-indigo-300"
-                      aria-label="Create Post"
-                    >
-                      <PlusCircle className="w-4 h-4" />
-                      Create
-                    </button>
+                    
                   </div>
                 </div>
               ) : (

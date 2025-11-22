@@ -63,7 +63,7 @@ const Footer = () => {
             `flex flex-col items-center ${isActive ? "text-black" : "text-gray-500"}`
           }
         >
-          <Home size={24} />
+          <Home size={20} />
           <span className="text-xs">Home</span>
         </NavLink>
 
@@ -73,7 +73,7 @@ const Footer = () => {
             `flex flex-col items-center ${isActive ? "text-black" : "text-gray-500"}`
           }
         >
-          <Search size={24} />
+          <Search size={20} />
           <span className="text-xs">Search</span>
         </NavLink>
 
@@ -83,7 +83,7 @@ const Footer = () => {
             `flex flex-col items-center ${isActive ? "text-black" : "text-gray-500"}`
           }
         >
-          <PlusSquare size={24} />
+          <PlusSquare size={20} />
           <span className="text-xs">Post</span>
         </NavLink>
 
@@ -93,7 +93,7 @@ const Footer = () => {
             `flex flex-col items-center ${isActive ? "text-black" : "text-gray-500"}`
           }
         >
-          <PlayCircle size={24} />
+          <PlayCircle size={20} />
           <span className="text-xs">Reels</span>
         </NavLink>
 

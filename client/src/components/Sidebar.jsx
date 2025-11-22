@@ -36,7 +36,11 @@ const Sidebar = ({SidebarOpen, setSidebarOpen}) => {
 
         <div className='w-full border-t border-gray-200 p-4 px-7 flrx items-center justify-between'>
             <div className='flex gap-2 items-center cursor-pointer'>
-                <UserButton />
+                <UserButton>
+                  <UserButton.MenuItems>
+                    
+                  </UserButton.MenuItems>
+                </UserButton>
                 <div>
                   <h1 className='text-sm font-medium'>{user.full_name}</h1>  
                   <p className='text-xs text-gray-500'>@{user.username}</p>   

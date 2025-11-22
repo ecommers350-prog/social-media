@@ -9,6 +9,11 @@ import postRouter from './routes/postRoutes.js';
 import storyRouter from './routes/storyRoutes.js';
 import messageRouter from './routes/messageRoutes.js';
 import { clerkMiddleware} from '@clerk/express'
+import router from './routes/postCommentsRoutes.js';
+import notificationRoutes from './routes/notificationRoutes.js';
+import connectionsRouter from './routes/connections.js';
+import messageRoutes from './routes/message.js';
+import authMiddleware from './middleware/authMiddleware.js'
 
 
 const app = express();
@@ -25,6 +30,11 @@ app.use('/api/user', userRouter);
 app.use('/api/post', postRouter);
 app.use('/api/story', storyRouter);
 app.use('/api/message', messageRouter);
+app.use('/api/post', router);
+app.use("/api/notifications", notificationRoutes);
+app.use("/api/user", connectionsRouter);
+app.use("/api/message", authMiddleware, messageRoutes);
+
 
 const PORT = process.env.PORT || 4000;
 

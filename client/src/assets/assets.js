@@ -22,7 +22,6 @@ export const menuItemsData = [
     { to: '/discover', label: 'Discover', Icon: Search },
     { to: '/profile', label: 'Profile', Icon: UserIcon },
     { to: '/reels', label: 'Reels', Icon: PlayCircle },
-    { to: '/notifications', label: 'Notifications', Icon: HeartIcon },
 ];
 
 export const dummyUserData = {
